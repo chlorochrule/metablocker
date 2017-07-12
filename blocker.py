@@ -63,8 +63,10 @@ def main():
     cur.execute('select * from users')
     rows = cur.fetchall()
     users = [row[0] for row in rows if row[0] != 'metablockerbot']
+    total_blocks_in_all_users = 0
     for row in rows:
         access_token_key, access_token_secret, words = row[1:4]
+        total_blocks_per_day = row[5]
         api = app.get_auth_api(access_token_key, access_token_secret)
         if row[0] == 'metablockerbot':
             since_id = row[4]
@@ -79,13 +81,14 @@ def main():
                     elif re.match('rm:', text):
                         removed_words = parse_to_words(text)
                         remove_words(user_id, removed_words)
-            since_id = max(dm.id for dm in dms)
-            conn2 = app.get_connector()
-            cur2 = conn2.cursor()
-            cur2.execute('update users set dm_since_id=%s where user_id=%s', (since_id, 'metablockerbot'))
-            conn2.commit()
-            cur2.close()
-            conn2.close()
+            if len(dms) != 0:
+                since_id = max(dm.id for dm in dms)
+                conn2 = app.get_connector()
+                cur2 = conn2.cursor()
+                cur2.execute('update users set dm_since_id=%s where user_id=%s', (since_id, 'metablockerbot'))
+                conn2.commit()
+                cur2.close()
+                conn2.close()
         for word in words:
             try:
                 for tweet in api.search(q=word, count=100):
@@ -93,14 +96,25 @@ def main():
                     friendship = api.lookup_friendships(screen_names=[block_user_id])[0]
                     if not friendship.is_following and not friendship.is_followed_by:
                         api.create_block(screen_name=block_user_id)
+                        total_blocks_per_day += 1
             except tweepy.error.TweepError as e:
                 if isinstance(e.message, list) and \
                         isinstance(e.message[0], dict) and \
                         'Invalid or expired token.' == e.message[0].get('message', ''):
                     remove_user(row[0])
                 break
+        conn2 = app.get_connector()
+        cur2 = conn2.cursor()
+        cur2.execute('update users set total_blocks_per_day=%s where user_id=%s', (total_blocks_per_day, row[0]))
+        conn2.commit()
+        cur2.close()
+        conn2.close()
+        total_blocks_in_all_users += total_blocks_per_day
     cur.close()
     conn.close()
+    time_now = datetime.now()
+    if time_now.hour == 0 and time_now.minute // 10 == 0:
+        api.update_status('{} blocks, yesterday.'.format(total_blocks_in_all_users))
 
 if __name__ == '__main__':
     main()
