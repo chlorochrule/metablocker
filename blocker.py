@@ -64,11 +64,13 @@ def main():
     rows = cur.fetchall()
     users = [row[0] for row in rows if row[0] != 'metablockerbot']
     total_blocks_in_all_users = 0
+    api_bot = None
     for row in rows:
         access_token_key, access_token_secret, words = row[1:4]
         total_blocks_per_day = row[5]
         api = app.get_auth_api(access_token_key, access_token_secret)
         if row[0] == 'metablockerbot':
+            api_bot = api
             since_id = row[4]
             dms = api.direct_messages(since_id=since_id)
             for dm in dms:
@@ -114,7 +116,7 @@ def main():
     conn.close()
     time_now = datetime.now()
     if time_now.hour == 0 and time_now.minute // 10 == 0:
-        api.update_status('{} blocks, yesterday.'.format(total_blocks_in_all_users))
+        api_bot.update_status('{} blocks, yesterday.'.format(total_blocks_in_all_users))
 
 if __name__ == '__main__':
     main()
